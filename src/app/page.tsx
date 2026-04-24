@@ -1,45 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase, type DBMenuItem } from '@/lib/supabase';
 
 // ── CONFIGURACIÓN — editá estos valores para personalizar el restaurante ──────
 const RESTAURANT = {
   name: 'La Trattoria',
   tagline: 'Cocina italiana auténtica',
-  whatsapp: '5491112345678', // número sin + ni espacios
+  whatsapp: '5491112345678',
   currency: '$',
 };
 
-// ── MENÚ ──────────────────────────────────────────────────────────────────────
-type Category = 'Entradas' | 'Principales' | 'Postres' | 'Bebidas';
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  category: Category;
-  emoji: string;
-}
-
-const MENU: MenuItem[] = [
-  { id: '1', name: 'Bruschetta',        description: 'Pan tostado con tomate fresco, ajo y albahaca',       price: 1200, category: 'Entradas',   emoji: '🍞' },
-  { id: '2', name: 'Carpaccio',         description: 'Láminas de carne con rúcula, parmesano y limón',       price: 1800, category: 'Entradas',   emoji: '🥩' },
-  { id: '3', name: 'Tabla de fiambres', description: 'Selección de embutidos y quesos artesanales',          price: 2200, category: 'Entradas',   emoji: '🧀' },
-  { id: '4', name: 'Pasta al Pomodoro', description: 'Tagliatelle con salsa de tomate fresco y albahaca',    price: 2800, category: 'Principales', emoji: '🍝' },
-  { id: '5', name: 'Risotto al funghi', description: 'Arroz cremoso con hongos salteados y parmesano',       price: 3200, category: 'Principales', emoji: '🍚' },
-  { id: '6', name: 'Milanesa napolitana', description: 'Ternera con salsa, jamón y mozzarella',              price: 3800, category: 'Principales', emoji: '🍖' },
-  { id: '7', name: 'Tiramisú',          description: 'Clásico italiano con mascarpone y café',               price: 1400, category: 'Postres',    emoji: '☕' },
-  { id: '8', name: 'Panna cotta',       description: 'Con coulis de frutos rojos',                           price: 1200, category: 'Postres',    emoji: '🍮' },
-  { id: '9', name: 'Agua mineral',      description: 'Con o sin gas 500 ml',                                 price: 600,  category: 'Bebidas',    emoji: '💧' },
-  { id: '10', name: 'Vino de la casa', description: 'Tinto o blanco, copa',                                  price: 1100, category: 'Bebidas',    emoji: '🍷' },
-  { id: '11', name: 'Gaseosa',          description: 'Coca-Cola, Sprite o Fanta',                            price: 700,  category: 'Bebidas',    emoji: '🥤' },
-];
-
-const CATEGORIES: Category[] = ['Entradas', 'Principales', 'Postres', 'Bebidas'];
+const EMOJI_FALLBACK: Record<string, string> = {
+  Entradas: '🍽️',
+  Principales: '🍖',
+  Postres: '🍮',
+  Bebidas: '🥤',
+};
 
 // ── TIPOS ─────────────────────────────────────────────────────────────────────
-interface CartItem extends MenuItem {
+interface CartItem extends DBMenuItem {
   quantity: number;
 }
 
@@ -50,36 +30,61 @@ interface OrderForm {
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function buildWhatsAppUrl(cart: CartItem[], form: OrderForm, restaurant: typeof RESTAURANT) {
+function buildWhatsAppUrl(cart: CartItem[], form: OrderForm) {
   const lines = cart.map(
-    (i) => `• ${i.name} x${i.quantity} — ${restaurant.currency}${(i.price * i.quantity).toLocaleString()}`
+    (i) => `• ${i.name} x${i.quantity} — ${RESTAURANT.currency}${(i.price * i.quantity).toLocaleString()}`
   );
   const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const message = [
-    `🍽️ *Nuevo pedido — ${restaurant.name}*`,
+    `🍽️ *Nuevo pedido — ${RESTAURANT.name}*`,
     `👤 ${form.name}`,
     form.table ? `📍 ${form.table}` : null,
     '',
     ...lines,
     '',
-    `*Total: ${restaurant.currency}${total.toLocaleString()}*`,
+    `*Total: ${RESTAURANT.currency}${total.toLocaleString()}*`,
     form.notes ? `\n📝 ${form.notes}` : null,
   ]
     .filter((l) => l !== null)
     .join('\n');
 
-  return `https://wa.me/${restaurant.whatsapp}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${RESTAURANT.whatsapp}?text=${encodeURIComponent(message)}`;
 }
 
 // ── COMPONENTE PRINCIPAL ──────────────────────────────────────────────────────
 export default function RestaurantCard() {
+  const [menu, setMenu] = useState<DBMenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState<Category>('Entradas');
+  const [activeCategory, setActiveCategory] = useState<string>('');
   const [cartOpen, setCartOpen] = useState(false);
   const [form, setForm] = useState<OrderForm>({ name: '', table: '', notes: '' });
+  const [saving, setSaving] = useState(false);
 
-  const addToCart = (item: MenuItem) => {
+  // Cargar menú desde Supabase
+  useEffect(() => {
+    async function loadMenu() {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*')
+        .eq('available', true)
+        .order('position');
+
+      if (!error && data) {
+        setMenu(data);
+        const firstCategory = data[0]?.category ?? '';
+        setActiveCategory(firstCategory);
+      }
+      setLoading(false);
+    }
+    loadMenu();
+  }, []);
+
+  const categories = [...new Set(menu.map((i) => i.category))];
+  const filteredMenu = menu.filter((i) => i.category === activeCategory);
+
+  const addToCart = (item: DBMenuItem) => {
     setCart((prev) => {
       const exists = prev.find((i) => i.id === item.id);
       if (exists) return prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
@@ -97,13 +102,52 @@ export default function RestaurantCard() {
 
   const totalItems = cart.reduce((s, i) => s + i.quantity, 0);
   const totalPrice = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  const filteredMenu = MENU.filter((i) => i.category === activeCategory);
   const canOrder = form.name.trim().length > 0 && cart.length > 0;
 
-  const handleOrder = () => {
+  const handleOrder = async () => {
     if (!canOrder) return;
-    window.open(buildWhatsAppUrl(cart, form, RESTAURANT), '_blank');
+    setSaving(true);
+
+    // Guardar pedido en Supabase
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        customer_name: form.name,
+        table_info: form.table || null,
+        notes: form.notes || null,
+        total: totalPrice,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (!error && order) {
+      await supabase.from('order_items').insert(
+        cart.map((item) => ({
+          order_id: order.id,
+          menu_item_id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        }))
+      );
+    }
+
+    setSaving(false);
+    // Abrir WhatsApp con el resumen
+    window.open(buildWhatsAppUrl(cart, form), '_blank');
+    setCart([]);
+    setForm({ name: '', table: '', notes: '' });
+    setCartOpen(false);
   };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <p className="text-sm text-gray-400">Cargando menú…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white font-sans">
@@ -134,7 +178,7 @@ export default function RestaurantCard() {
       <div className="border-b border-gray-100 bg-white">
         <div className="mx-auto max-w-2xl px-4">
           <div className="scrollbar-hide flex gap-1 overflow-x-auto py-3">
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
@@ -156,13 +200,14 @@ export default function RestaurantCard() {
         <div className="space-y-2">
           {filteredMenu.map((item) => {
             const cartItem = cart.find((i) => i.id === item.id);
+            const emoji = item.emoji ?? EMOJI_FALLBACK[item.category] ?? '🍽️';
             return (
               <div
                 key={item.id}
                 className="flex items-center justify-between rounded-xl border border-gray-200 p-4 transition-all hover:border-gray-300 hover:bg-gray-50"
               >
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <span className="text-2xl leading-none">{item.emoji}</span>
+                  <span className="text-2xl leading-none">{emoji}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">{item.name}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-gray-400">{item.description}</p>
@@ -206,7 +251,7 @@ export default function RestaurantCard() {
         </div>
       </main>
 
-      {/* CARRITO — PANEL LATERAL */}
+      {/* CARRITO */}
       {cartOpen && (
         <div className="fixed inset-0 z-50">
           <div
@@ -215,7 +260,6 @@ export default function RestaurantCard() {
           />
           <div className="absolute bottom-0 right-0 top-0 flex w-full max-w-sm flex-col bg-white shadow-2xl">
 
-            {/* Encabezado */}
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
               <h2 className="font-semibold text-gray-900">Tu pedido</h2>
               <button
@@ -226,7 +270,6 @@ export default function RestaurantCard() {
               </button>
             </div>
 
-            {/* Items */}
             <div className="flex-1 space-y-3 overflow-y-auto p-5">
               {cart.length === 0 ? (
                 <p className="py-8 text-center text-sm text-gray-400">
@@ -261,12 +304,9 @@ export default function RestaurantCard() {
               )}
             </div>
 
-            {/* Formulario + Confirmar */}
             <div className="space-y-3 border-t border-gray-200 p-5">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
-                  Tu nombre *
-                </label>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Tu nombre *</label>
                 <input
                   type="text"
                   placeholder="ej. María García"
@@ -276,9 +316,7 @@ export default function RestaurantCard() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
-                  Mesa o tipo de entrega
-                </label>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Mesa o tipo de entrega</label>
                 <input
                   type="text"
                   placeholder="ej. Mesa 4 / Para llevar / Delivery"
@@ -306,11 +344,10 @@ export default function RestaurantCard() {
 
               <button
                 onClick={handleOrder}
-                disabled={!canOrder}
+                disabled={!canOrder || saving}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <span>Enviar por WhatsApp</span>
-                <span>→</span>
+                {saving ? 'Guardando…' : 'Enviar por WhatsApp →'}
               </button>
 
               {!canOrder && cart.length > 0 && (
