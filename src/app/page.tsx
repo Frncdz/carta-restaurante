@@ -65,18 +65,22 @@ export default function RestaurantCard() {
   // Cargar menú desde Supabase
   useEffect(() => {
     async function loadMenu() {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('available', true)
-        .order('position');
+      try {
+        const { data, error } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('available', true)
+          .order('position');
 
-      if (!error && data) {
-        setMenu(data);
-        const firstCategory = data[0]?.category ?? '';
-        setActiveCategory(firstCategory);
+        if (!error && data && data.length > 0) {
+          setMenu(data);
+          setActiveCategory(data[0].category);
+        }
+      } catch {
+        // fallo silencioso — la UI muestra el menú vacío
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadMenu();
   }, []);
