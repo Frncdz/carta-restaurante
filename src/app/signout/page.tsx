@@ -8,8 +8,10 @@ export default function SignOutPage() {
   const router = useRouter();
 
   useEffect(() => {
-    supabase.auth.signOut().then(() => router.replace('/login'));
-  }, [router]);
+    supabase.auth.signOut().then(() => {
+      window.location.href = '/login';
+    });
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-white">
