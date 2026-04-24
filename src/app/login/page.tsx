@@ -9,8 +9,8 @@ const ROLE_REDIRECTS: Record<UserRole, string> = {
   admin:          '/admin',
   waiter:         '/waiter',
   kitchen:        '/kitchen',
-  customer_host:  '/table',
-  customer_guest: '/table',
+  customer_host:  '/table/1',
+  customer_guest: '/table/1',
 };
 
 export default function LoginPage() {
