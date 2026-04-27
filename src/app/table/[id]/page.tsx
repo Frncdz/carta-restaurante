@@ -8,7 +8,6 @@ import { supabase, type DBMenuItem } from '@/lib/supabase';
 const RESTAURANT = {
   name:     'La Trattoria',
   currency: '$',
-  whatsapp: '5491112345678',
 };
 const EMOJI_FALLBACK: Record<string, string> = {
   Entradas: '🍽️', Principales: '🍖', Postres: '🍮', Bebidas: '🥤',
@@ -49,6 +48,7 @@ export default function TablePage() {
   const [notes, setNotes]               = useState('');
   const [name, setName]                 = useState('');
   const [formLoading, setFormLoading]   = useState(false);
+  const [orderSent, setOrderSent]       = useState(false);
 
   // Cargar menú
   useEffect(() => {
@@ -205,10 +205,7 @@ export default function TablePage() {
         cart.map(i => ({ order_id: order.id, menu_item_id: i.id, name: i.name, price: i.price, quantity: i.quantity }))
       );
     }
-    const lines = cart.map(i => `• ${i.name} x${i.quantity} — ${RESTAURANT.currency}${(i.price * i.quantity).toLocaleString()}`);
-    const msg = [`🍽️ *${RESTAURANT.name}*`, `👤 ${localData.name}`, `📍 Mesa ${tableId}`, '', ...lines, '', `*Total: ${RESTAURANT.currency}${totalPrice.toLocaleString()}*`, notes ? `\n📝 ${notes}` : null].filter(Boolean).join('\n');
-    window.open(`https://wa.me/${RESTAURANT.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
-    setCart([]); setNotes(''); setCartOpen(false);
+    setCart([]); setNotes(''); setCartOpen(false); setOrderSent(true);
   };
 
   // ── RENDERS DE ESTADO ─────────────────────────────────────────────────────
@@ -435,6 +432,24 @@ export default function TablePage() {
                 Salir de la mesa
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMACIÓN DE PEDIDO */}
+      {orderSent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-2xl">
+            <p className="mb-3 text-4xl">✅</p>
+            <h2 className="mb-2 text-lg font-semibold text-gray-900">¡Pedido enviado!</h2>
+            <p className="mb-6 text-sm text-gray-400">El restaurante ya recibió tu pedido y lo está preparando.</p>
+            <button
+              onClick={() => setOrderSent(false)}
+              className="w-full rounded-xl bg-gray-900 py-2.5 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+            >
+              Volver al menú
+            </button>
           </div>
         </div>
       )}
